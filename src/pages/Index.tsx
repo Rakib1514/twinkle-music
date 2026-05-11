@@ -16,10 +16,16 @@ const Index = () => {
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
-    setNameState(getName());
+    const existingName = getName();
+    setNameState(existingName);
+    
     const j = searchParams.get("join");
-    if (j) setCode(j.toUpperCase().slice(0, 4));
-  }, [searchParams]);
+    if (j) {
+      const c = j.toUpperCase().slice(0, 4);
+      setCode(c);
+      navigate(`/room/${c}`, { replace: true });
+    }
+  }, [searchParams, navigate]);
 
   const ensureName = () => {
     const n = name.trim();
@@ -116,7 +122,7 @@ const Index = () => {
             <Play className="w-8 h-8 text-white fill-white" />
           </div>
           <h1 className="text-5xl font-bold tracking-tight">
-            Group<span className="text-gradient">Play</span>
+            Twinkle<span className="text-gradient">Music</span>
           </h1>
           <p className="text-muted-foreground">Watch YouTube together. In sync. With friends.</p>
         </header>

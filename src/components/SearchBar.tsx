@@ -81,7 +81,10 @@ export const SearchBar = ({ onAdd }: Props) => {
           {results.map((r) => (
             <button
               key={r.videoId}
-              onClick={() => onAdd(r)}
+              onClick={() => {
+                onAdd(r);
+                clear();
+              }}
               className="w-full flex gap-3 p-2 rounded-lg hover:bg-secondary/60 text-left transition"
             >
               <img src={r.thumbnail} alt="" className="w-24 h-14 object-cover rounded flex-shrink-0" />

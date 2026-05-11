@@ -4,12 +4,15 @@ import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
-import { Copy, LogOut, Users, Crown, X, SkipForward, Play, Share2 } from "lucide-react";
+import { Copy, LogOut, Users, Crown, X, SkipForward, Play, Share2, ThumbsUp, ThumbsDown } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { getName, getUserId } from "@/lib/identity";
 import { YouTubePlayer, type PlayerHandle } from "@/components/YouTubePlayer";
 import { SearchBar, type SearchResult } from "@/components/SearchBar";
 import { ChatPanel, type ChatMessage } from "@/components/ChatPanel";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
+import { setName as saveName } from "@/lib/identity";
 
 interface Room {
   id: string;
@@ -37,6 +40,7 @@ interface QueueItem {
   channel: string | null;
   added_by_name: string;
   position: number;
+  votes: number;
   created_at: string;
 }
 
@@ -51,6 +55,9 @@ const Room = () => {
   const [queue, setQueue] = useState<QueueItem[]>([]);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [loading, setLoading] = useState(true);
+  const [showNameModal, setShowNameModal] = useState(false);
+  const [pendingName, setPendingName] = useState("");
+  const [isJoining, setIsJoining] = useState(false);
 
   const playerRef = useRef<PlayerHandle | null>(null);
   const lastBroadcastRef = useRef<number>(0);
@@ -62,23 +69,29 @@ const Room = () => {
   useEffect(() => {
     let cancelled = false;
     const c = code.toUpperCase();
-    if (!getName()) {
-      navigate(`/?join=${c}`, { replace: true });
-      return;
-    }
+    
     (async () => {
       const { data: r, error } = await supabase
         .from("rooms")
         .select("*")
         .eq("code", c)
         .maybeSingle();
+      
       if (cancelled) return;
+      
       if (error || !r) {
         toast.error("Room not found");
         navigate("/");
         return;
       }
       setRoom(r as Room);
+
+      const name = getName();
+      if (!name) {
+        setShowNameModal(true);
+        setLoading(false);
+        return;
+      }
 
       // ensure I'm a member (in case of refresh)
       const { data: existing } = await supabase
@@ -87,10 +100,11 @@ const Room = () => {
         .eq("room_id", r.id)
         .eq("user_id", uid)
         .maybeSingle();
-      if (!existing) {
+        
+      if (!existing && !cancelled) {
         const { error: joinErr } = await supabase
           .from("room_members")
-          .insert({ room_id: r.id, user_id: uid, name: myName });
+          .insert({ room_id: r.id, user_id: uid, name });
         if (joinErr) {
           toast.error(joinErr.message.includes("full") ? "Room is full" : joinErr.message);
           navigate("/");
@@ -100,15 +114,17 @@ const Room = () => {
 
       const [{ data: mems }, { data: q }] = await Promise.all([
         supabase.from("room_members").select("*").eq("room_id", r.id).order("joined_at"),
-        supabase.from("queue_items").select("*").eq("room_id", r.id).order("created_at"),
+        supabase.from("queue_items").select("*").eq("room_id", r.id).order("votes", { ascending: false }).order("created_at"),
       ]);
+      
       if (cancelled) return;
       setMembers((mems as Member[]) || []);
       setQueue((q as QueueItem[]) || []);
       setLoading(false);
     })();
+
     return () => { cancelled = true; };
-  }, [code, navigate, uid, myName]);
+  }, [code, navigate, uid]);
 
   // Realtime subscriptions
   useEffect(() => {
@@ -139,6 +155,7 @@ const Room = () => {
             .from("queue_items")
             .select("*")
             .eq("room_id", room.id)
+            .order("votes", { ascending: false })
             .order("created_at");
           setQueue((data as QueueItem[]) || []);
         })
@@ -323,6 +340,54 @@ const Room = () => {
     toast.success("Invite link copied");
   };
 
+  const handleJoin = async () => {
+    if (!room || isJoining) return;
+    const name = pendingName.trim();
+    if (name.length < 2) {
+      toast.error("Name must be at least 2 characters");
+      return;
+    }
+    setIsJoining(true);
+    try {
+      saveName(name);
+      const { error: joinErr } = await supabase
+        .from("room_members")
+        .insert({ room_id: room.id, user_id: uid, name });
+      
+      if (joinErr) {
+        if (joinErr.message.includes("full")) toast.error("Room is full");
+        else toast.error(joinErr.message);
+        return;
+      }
+      
+      const [{ data: mems }, { data: q }] = await Promise.all([
+        supabase.from("room_members").select("*").eq("room_id", room.id).order("joined_at"),
+        supabase.from("queue_items").select("*").eq("room_id", room.id).order("created_at"),
+      ]);
+      
+      setMembers((mems as Member[]) || []);
+      setQueue((q as QueueItem[]) || []);
+      setShowNameModal(false);
+    } catch (e: any) {
+      toast.error(e.message || "Failed to join");
+    } finally {
+      setIsJoining(false);
+    }
+  };
+
+  const vote = async (itemId: string, type: 1 | -1) => {
+    // Upsert vote; trigger handles count in queue_items
+    const { error } = await supabase
+      .from("queue_item_votes")
+      .upsert({ queue_item_id: itemId, user_id: uid, vote_type: type }, { onConflict: "queue_item_id,user_id" });
+    
+    if (error) {
+      toast.error(error.message);
+    } else {
+      toast.success(type === 1 ? "Upvoted" : "Downvoted");
+    }
+  };
+
   if (loading || !room) {
     return (
       <div className="min-h-screen flex items-center justify-center">
@@ -428,6 +493,19 @@ const Room = () => {
                       <p className="text-sm font-medium line-clamp-1">{q.title}</p>
                       <p className="text-xs text-muted-foreground">added by {q.added_by_name}</p>
                     </div>
+
+                    <div className="flex items-center gap-1 mr-2">
+                      <Button size="icon" variant="ghost" className="h-8 w-8 hover:text-green-500" onClick={() => vote(q.id, 1)}>
+                        <ThumbsUp className="w-3.5 h-3.5" />
+                      </Button>
+                      <span className={`text-xs font-bold w-6 text-center ${q.votes > 0 ? "text-green-500" : q.votes < 0 ? "text-red-500" : ""}`}>
+                        {q.votes || 0}
+                      </span>
+                      <Button size="icon" variant="ghost" className="h-8 w-8 hover:text-red-500" onClick={() => vote(q.id, -1)}>
+                        <ThumbsDown className="w-3.5 h-3.5" />
+                      </Button>
+                    </div>
+
                     {isOwner && (
                       <Button size="icon" variant="ghost" onClick={() => removeFromQueue(q.id)}>
                         <X className="w-4 h-4" />
@@ -445,6 +523,34 @@ const Room = () => {
           <ChatPanel messages={messages} onSend={sendChat} myUserId={uid} />
         </div>
       </main>
+
+      <Dialog open={showNameModal} onOpenChange={(open) => !open && navigate("/")}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Enter your name</DialogTitle>
+            <DialogDescription>
+              Choose a name to join the room and start watching together.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            <Input
+              value={pendingName}
+              onChange={(e) => setPendingName(e.target.value)}
+              onKeyDown={(e) => e.key === "Enter" && handleJoin()}
+              placeholder="e.g. Alex"
+              maxLength={24}
+              autoFocus
+            />
+            <Button 
+              className="w-full gradient-primary" 
+              onClick={handleJoin}
+              disabled={isJoining || !pendingName.trim()}
+            >
+              Join Room
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 };

@@ -42,6 +42,12 @@ export const YouTubePlayer = ({ videoId, isOwner, onReady, onStateChange, onEnde
   const playerRef = useRef<any>(null);
   const [ready, setReady] = useState(false);
 
+  // Keep callbacks fresh to avoid stale closures
+  const callbacksRef = useRef({ onReady, onStateChange, onEnded });
+  useEffect(() => {
+    callbacksRef.current = { onReady, onStateChange, onEnded };
+  }, [onReady, onStateChange, onEnded]);
+
   useEffect(() => {
     let cancelled = false;
     loadYouTubeAPI().then(() => {
@@ -68,12 +74,14 @@ export const YouTubePlayer = ({ videoId, isOwner, onReady, onStateChange, onEnde
               getCurrentTime: () => playerRef.current?.getCurrentTime() ?? 0,
               getState: () => playerRef.current?.getPlayerState() ?? -1,
             };
-            onReady?.(handle);
+            callbacksRef.current.onReady?.(handle);
           },
           onStateChange: (e: any) => {
             const t = playerRef.current?.getCurrentTime() ?? 0;
-            onStateChange?.(e.data, t);
-            if (e.data === window.YT.PlayerState.ENDED) onEnded?.();
+            callbacksRef.current.onStateChange?.(e.data, t);
+            if (e.data === window.YT.PlayerState.ENDED) {
+              callbacksRef.current.onEnded?.();
+            }
           },
         },
       });
