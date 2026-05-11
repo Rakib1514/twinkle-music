@@ -1,0 +1,68 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --background: 240 18% 7%;
+    --foreground: 0 0% 98%;
+
+    --card: 240 16% 10%;
+    --card-foreground: 0 0% 98%;
+
+    --popover: 240 16% 10%;
+    --popover-foreground: 0 0% 98%;
+
+    --primary: 280 95% 65%;
+    --primary-foreground: 0 0% 100%;
+    --primary-glow: 320 95% 70%;
+
+    --secondary: 240 12% 16%;
+    --secondary-foreground: 0 0% 98%;
+
+    --muted: 240 12% 14%;
+    --muted-foreground: 240 5% 65%;
+
+    --accent: 320 95% 70%;
+    --accent-foreground: 0 0% 100%;
+
+    --destructive: 0 75% 60%;
+    --destructive-foreground: 0 0% 100%;
+
+    --border: 240 12% 18%;
+    --input: 240 12% 16%;
+    --ring: 280 95% 65%;
+
+    --radius: 0.75rem;
+
+    --gradient-primary: linear-gradient(135deg, hsl(280 95% 65%), hsl(320 95% 70%));
+    --gradient-bg: radial-gradient(ellipse at top, hsl(280 50% 15%), hsl(240 18% 7%));
+    --shadow-glow: 0 0 40px hsl(280 95% 65% / 0.35);
+  }
+}
+
+@layer base {
+  * { @apply border-border; }
+  body {
+    @apply bg-background text-foreground;
+    font-family: 'Inter', system-ui, sans-serif;
+    background: var(--gradient-bg);
+    background-attachment: fixed;
+    min-height: 100vh;
+  }
+  ::-webkit-scrollbar { width: 8px; height: 8px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: hsl(var(--secondary)); border-radius: 4px; }
+  ::-webkit-scrollbar-thumb:hover { background: hsl(var(--muted)); }
+}
+
+@layer utilities {
+  .gradient-primary { background: var(--gradient-primary); }
+  .text-gradient {
+    background: var(--gradient-primary);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+  }
+  .glow { box-shadow: var(--shadow-glow); }
+}
